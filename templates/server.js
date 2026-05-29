@@ -30,6 +30,10 @@ function loadProjects() {
 // 每个 chat 的当前项目和会话 ID
 const chatState = new Map(); // chatId -> { project, sessionId }
 
+// 通用工作目录（不绑定任何项目，保证随时能用）
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || path.join(require('os').homedir(), 'claude-workspace');
+if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+
 // 获取默认项目：优先用 env 指定，否则取 projects.json 第一个
 function getDefaultProject() {
   const projects = loadProjects();
@@ -49,8 +53,8 @@ function getWorkDir(chatId) {
     if (!state?.project) chatState.set(chatId, { project: def, sessionId: null });
     return projects[def];
   }
-  // 都没有 → 用 bot 自身目录
-  return __dirname;
+  // 都没有 → 用通用工作目录（永远可用）
+  return WORKSPACE_DIR;
 }
 
 // Claude Code CLI 完整路径
