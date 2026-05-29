@@ -58,11 +58,38 @@ PORT=3000
 ### 5. 启动服务
 
 ```bash
-# 终端 1：启动服务
+# 方式一：直接运行（关闭终端后服务停止）
 node server.js
 
-# 终端 2：启动 ngrok
+# 方式二：用 pm2 守护（推荐，熄屏/关终端都不会停）
+npm install -g pm2
+pm2 start server.js --name feishu-bot
+pm2 save
+
+# 方式三：ngrok 隧道（另一个终端）
 ngrok http 3000
+```
+
+### 6. 防止熄屏后断连
+
+电脑睡眠会导致服务中断，需要禁止自动睡眠：
+
+```bash
+# 禁止接通电源时自动睡眠
+powercfg -change -standby-timeout-ac 0
+
+# 禁止电池供电时自动睡眠
+powercfg -change -standby-timeout-dc 0
+```
+
+或在 **设置 → 系统 → 电源** 中将睡眠设为「从不」。
+
+### 7. 开机自启动（可选）
+
+```bash
+# pm2 开机自启
+pm2 startup
+pm2 save
 ```
 
 ## 使用方式
