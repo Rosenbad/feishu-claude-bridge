@@ -11,6 +11,7 @@ app.use(express.json());
 const {
   FEISHU_APP_ID,
   FEISHU_APP_SECRET,
+  DEFAULT_PROJECT,  // 可选：默认项目名
   PORT = 3000
 } = process.env;
 
@@ -28,6 +29,29 @@ function loadProjects() {
 
 // 每个 chat 的当前项目和会话 ID
 const chatState = new Map(); // chatId -> { project, sessionId }
+
+// 获取默认项目：优先用 env 指定，否则取 projects.json 第一个
+function getDefaultProject() {
+  const projects = loadProjects();
+  if (DEFAULT_PROJECT && projects[DEFAULT_PROJECT]) return DEFAULT_PROJECT;
+  const names = Object.keys(projects);
+  return names.length > 0 ? names[0] : null;
+}
+
+function getWorkDir(chatId) {
+  const state = chatState.get(chatId);
+  const projects = loadProjects();
+  // 有明确选择的项目 → 用它
+  if (state?.project && projects[state.project]) return projects[state.project];
+  // 否则用默认项目
+  const def = getDefaultProject();
+  if (def) {
+    if (!state?.project) chatState.set(chatId, { project: def, sessionId: null });
+    return projects[def];
+  }
+  // 都没有 → 用 bot 自身目录
+  return __dirname;
+}
 
 // Claude Code CLI 完整路径
 const CLAUDE_BIN = process.platform === 'win32'
@@ -114,17 +138,19 @@ function handleCommand(text, chatId) {
 
   // /current — 显示当前项目
   if (text === '/current') {
-    if (!state.project) return '当前未选择项目。使用 /list 查看可用项目。';
-    return `当前项目：${state.project}\n目录：${projects[state.project]}`;
+    const cur = state.project || getDefaultProject();
+    if (!cur) return '未配置任何项目。';
+    return `当前项目：${cur}\n目录：${projects[cur] || __dirname}`;
   }
 
   // /reset — 重置当前项目的会话
   if (text === '/reset') {
-    if (state.project) {
+    const cur = state.project || getDefaultProject();
+    if (cur) {
       chatState.set(chatId, { ...state, sessionId: null });
-      return `已重置项目 "${state.project}" 的会话上下文。`;
+      return `已重置会话上下文。`;
     }
-    return '当前未选择项目。';
+    return '未配置任何项目。';
   }
 
   // /help — 帮助
@@ -175,21 +201,16 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // 检查是否已选择项目
-    const state = chatState.get(chatId);
+    // 获取当前工作目录（自动使用默认项目）
+    const state = chatState.get(chatId) || {};
     const projects = loadProjects();
-    if (!state?.project || !projects[state.project]) {
-      try {
-        await sendFeishuMessage(chatId,
-          '请先选择项目：\n/list — 查看可用项目\n/use <项目名> — 切换项目');
-      } catch {}
-      return;
-    }
+    const workDir = getWorkDir(chatId);
+    const projectName = state.project || getDefaultProject() || '默认';
 
     // 调用 Claude Code
     try {
-      await sendFeishuMessage(chatId, `[${state.project}] 思考中...`);
-      const result = await askClaudeCode(text, projects[state.project], state.sessionId);
+      await sendFeishuMessage(chatId, `[${projectName}] 思考中...`);
+      const result = await askClaudeCode(text, workDir, state.sessionId);
       if (result.sessionId) {
         chatState.set(chatId, { ...state, sessionId: result.sessionId });
       }
