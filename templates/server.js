@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -97,13 +97,20 @@ function askClaudeCode(userMessage, workDir, sessionId) {
     const args = ['-p', userMessage, '--output-format', 'json', '--dangerously-skip-permissions'];
     if (sessionId) args.push('--resume', sessionId);
 
-    execFile(CLAUDE_BIN, args, {
+    const proc = spawn(CLAUDE_BIN, args, {
       cwd: workDir,
       timeout: 300000,
-      maxBuffer: 10 * 1024 * 1024,
-      shell: true
-    }, (error, stdout, stderr) => {
-      if (error && !stdout) return reject(new Error(stderr || error.message));
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', d => stdout += d);
+    proc.stderr.on('data', d => stderr += d);
+
+    proc.on('close', (code) => {
+      if (code !== 0 && !stdout) return reject(new Error(stderr || `exit code ${code}`));
       try {
         const result = JSON.parse(stdout);
         resolve({ text: result.result || result.content || '(无回复)', sessionId: result.session_id });
@@ -111,6 +118,8 @@ function askClaudeCode(userMessage, workDir, sessionId) {
         resolve({ text: stdout || stderr || '(无回复)', sessionId: null });
       }
     });
+
+    proc.on('error', (err) => reject(err));
   });
 }
 
