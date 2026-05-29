@@ -101,6 +101,7 @@ function askClaudeCode(userMessage, workDir, sessionId) {
       cwd: workDir,
       timeout: 300000,
       windowsHide: true,
+      shell: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
